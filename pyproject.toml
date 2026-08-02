@@ -1,0 +1,51 @@
+[tool.poetry]
+name = "geoia-sus"
+version = "0.1.0"
+description = "GeoIA — Assistente de saúde geoespacial com IA generativa"
+authors = ["Vanessa Batista <vandromedae@gmail.com>"]
+readme = "README.md"
+license = "MIT"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115"
+uvicorn = {extras = ["standard"], version = "^0.34"}
+sqlalchemy = "^2.0"
+geoalchemy2 = "^0.17"
+alembic = "^1.14"
+psycopg2-binary = "^2.9"
+groq = "^0.18"
+pydantic = "^2.10"
+pydantic-settings = "^2.7"
+geopandas = "^1.0"
+pandas = "^2.2"
+shapely = "^2.1"
+folium = "^0.19"
+streamlit = "^1.41"
+streamlit-folium = "^0.23"
+httpx = "^0.28"
+typer = {extras = ["all"], version = "^0.15"}
+pyarrow = "^18.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3"
+pytest-asyncio = "^0.25"
+pytest-cov = "^6.0"
+ruff = "^0.9"
+httpx = "^0.28"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

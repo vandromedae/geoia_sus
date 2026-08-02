@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "Se você utilizar este código, por favor, cite este repositório."
+title: "Consulta em linguagem natural sobre acessibilidade a médicos do SUS/SP — FastAPI + PostGIS + function calling, com suporte a LLM local (Ollama) ou Groq."
+authors:
+  - family-names: Batista
+    given-names: Vanessa
+    alias: vandromedae    
+version: 1.0.0
+date-released: 2026-07-17
+url: "https://github.com/vandromedae/geoia_sus"
+repository-code: "https://github.com/vandromedae/geoia_sus"
+license: MIT
+keywords:
+  - "saúde pública"
+  - "desertos médicos"
+  - "E2SFCA"
+  - "geoprocessamento"
+  - "SUS"
+  - "ciência de dados"
+  - "Python"
+  - "FastAPI"
+  - "PostGIS"
+  - "LLM local"
+  - "IA generativa"
+  - "RAG geoespacial"
+abstract: >
+Consulta em linguagem natural sobre acessibilidade a médicos do SUS/SP — FastAPI + PostGIS + function calling, com suporte a LLM local (Ollama) ou Groq.

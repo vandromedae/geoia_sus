@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgis/postgis:15-3.3
+        env:
+          POSTGRES_DB: geoia_sus_test
+          POSTGRES_USER: geoai
+          POSTGRES_PASSWORD: test_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U geoai"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql://geoai:test_secret@localhost:5432/geoia_sus_test
+      LLM_PROVIDER: fake
+      GROQ_API_KEY: test
+      GROQ_MODEL: test
+      OLLAMA_URL: http://localhost:11434
+      OLLAMA_MODEL: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Lint
+        run: |
+          poetry run ruff check src tests
+          poetry run ruff format --check src tests
+
+      - name: Run Alembic migrations
+        run: |
+          poetry run alembic upgrade head
+
+      - name: Import fixtures
+        run: |
+          poetry run python -c "
+          from pathlib import Path
+          from src.database import SessionLocal
+          from src.services.data import importar_municipios, importar_setores
+          s = SessionLocal()
+          n1 = importar_municipios(Path('tests/fixtures/municipios.parquet'), s)
+          n2 = importar_setores(Path('tests/fixtures/setores.parquet'), s)
+          s.close()
+          print(f'Imported {n1} municipios, {n2} setores')
+          "
+
+      - name: Run tests
+        run: poetry run pytest -v

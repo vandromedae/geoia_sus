@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-geoia_sus}
+      POSTGRES_USER: ${POSTGRES_USER:-geoai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-geoai}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-geoai}:${POSTGRES_PASSWORD:-geoai_secret}@db:5432/${POSTGRES_DB:-geoia_sus}
+      LLM_PROVIDER: ${LLM_PROVIDER:-groq}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GROQ_MODEL: ${GROQ_MODEL:-qwen-qwq-32b}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:8501","http://localhost:3000"]}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+      - ./alembic:/app/alembic
+      - ./scripts:/app/scripts
+
+  frontend:
+    build: .
+    entrypoint: streamlit run frontend/app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      PYTHONPATH: /app
+      API_URL: http://api:8000
+    depends_on:
+      - api
+    volumes:
+      - ./frontend:/app/frontend
+
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    profiles:
+      - offline
+
+volumes:
+  pgdata:
+  ollama_data:
