@@ -13,7 +13,7 @@ em mapa interativo e obtenha insights baseados em dados reais do CNES/DATASUS e 
 - **LLM:** Groq (Qwen3) ou Ollama (local)
 - **Banco:** PostgreSQL + PostGIS
 - **Frontend:** Streamlit + Folium
-- **Testes:** pytest (42 testes)
+- **Testes:** pytest (45 testes)
 - **Migrações:** Alembic
 
 ## Instalação e uso
@@ -105,7 +105,7 @@ O script entrypoint.sh do container automaticamente:
 make up            # Iniciar com Groq (ou o que estiver no .env)
 make up-offline    # Iniciar com Ollama (sobrescreve .env)
 make down          # Parar tudo
-make test          # Rodar 42 testes
+make test          # Rodar 45 testes
 make lint          # Verificar estilo (ruff)
 make format        # Formatar código
 make clean         # Limpar caches
@@ -123,6 +123,14 @@ poetry run python scripts/download_data.py
 poetry run python scripts/import_data.py
 poetry run uvicorn src.api.main:app --reload
 ```
+
+## Problemas conhecidos
+
+Há algumas inconsistências pontuais nos dados. Porém, a geração desses dados é feita em outro projeto que está em revisão.
+
+- **50 setores** classificados como "Deserto médico" (nível 6) têm `total_medicos_dentro > 0` e `dist_minima_metros` de 5–8,7 km (acima do raio de 5 km) — contradição interna.
+- **3 setores** com `dist_minima_metros < 5 km` mas `e2sfca == 0`.
+- Categorias 1/2/3 com ~25% dos setores cada — resultado da classificação por quantis (metodologia relativa, não é bug).
 
 ## Licença
 

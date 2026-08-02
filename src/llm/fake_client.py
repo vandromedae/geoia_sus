@@ -1,5 +1,3 @@
-
-
 class FakeLLMClient:
     def __init__(
         self,

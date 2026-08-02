@@ -38,6 +38,7 @@ def db_session():
     from sqlalchemy.orm import sessionmaker
 
     from src.database import engine
+
     connection = engine.connect()
     transaction = connection.begin()
     session_factory = sessionmaker(bind=connection)
@@ -53,4 +54,5 @@ def api_client():
     from fastapi.testclient import TestClient
 
     from src.api.main import app
+
     return TestClient(app)

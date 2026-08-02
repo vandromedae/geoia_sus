@@ -22,9 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data" / "processed"
 
 # Data release (GitHub Releases)
-DATA_RELEASE_URL = (
-    "https://github.com/vandromedae/geoia_sus/releases/latest/download"
-)
+DATA_RELEASE_URL = "https://github.com/vandromedae/geoia_sus/releases/latest/download"
 
 # Parquet files
 PARQUET_SETORES = DATA_DIR / "setores_com_acessibilidade_real.parquet"

@@ -100,13 +100,17 @@ def comparar_municipios_db(
     placeholders = ", ".join([f"UPPER(:m{i})" for i in range(len(municipios))])
     params = {f"m{i}": m for i, m in enumerate(municipios)}
 
-    rows = db.execute(
-        text(f"""
+    rows = (
+        db.execute(
+            text(f"""
             SELECT * FROM municipios
             WHERE UPPER(nm_mun) IN ({placeholders})
         """),
-        params,
-    ).mappings().all()
+            params,
+        )
+        .mappings()
+        .all()
+    )
 
     return [Municipio(**dict(r)) for r in rows]
 

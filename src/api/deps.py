@@ -18,11 +18,13 @@ def get_db() -> Generator[Session, None, None]:
 def get_llm_client() -> LLMClient:
     if settings.llm_provider == "ollama":
         from src.llm.ollama_client import OllamaClient
+
         return OllamaClient(
             base_url=settings.ollama_url,
             model=settings.ollama_model,
         )
     from src.llm.groq_client import GroqClient
+
     return GroqClient(
         api_key=settings.groq_api_key,
         model=settings.groq_model,

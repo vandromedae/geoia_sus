@@ -32,8 +32,12 @@ def importar_municipios(caminho: Path, session: Session) -> int:
         obj.num_setores = int(row["num_setores"]) if pd.notna(row["num_setores"]) else None
         obj.total_medicos = int(row["total_medicos"]) if pd.notna(row["total_medicos"]) else None
         obj.total_cnes = int(row["total_cnes"]) if pd.notna(row["total_cnes"]) else None
-        obj.medicos_por_1k = float(row["medicos_por_1k"]) if pd.notna(row["medicos_por_1k"]) else None
-        obj.categoria_densidade = str(row["categoria_densidade"]) if pd.notna(row["categoria_densidade"]) else None
+        obj.medicos_por_1k = (
+            float(row["medicos_por_1k"]) if pd.notna(row["medicos_por_1k"]) else None
+        )
+        obj.categoria_densidade = (
+            str(row["categoria_densidade"]) if pd.notna(row["categoria_densidade"]) else None
+        )
         obj.categoria_densidade_nivel = (
             _nivel(str(row["categoria_densidade"]))
             if pd.notna(row["categoria_densidade"])
@@ -105,16 +109,26 @@ def importar_setores(caminho: Path, session: Session, limite: int | None = None)
         obj.v0006 = float(row["v0006"]) if pd.notna(row.get("v0006")) else None
         obj.v0007 = float(row["v0007"]) if pd.notna(row.get("v0007")) else None
         obj.cod_mun_ibge = str(row["cod_mun_ibge"]) if pd.notna(row.get("cod_mun_ibge")) else None
-        obj.acessibilidade_e2sfca = float(row["acessibilidade_e2sfca"]) if pd.notna(row.get("acessibilidade_e2sfca")) else None
-        obj.categoria_acesso = str(row["categoria_acesso"]) if pd.notna(row.get("categoria_acesso")) else None
-        obj.categoria_acesso_nivel = (
-            _nivel(str(row["categoria_acesso"]))
-            if pd.notna(row.get("categoria_acesso"))
+        obj.acessibilidade_e2sfca = (
+            float(row["acessibilidade_e2sfca"])
+            if pd.notna(row.get("acessibilidade_e2sfca"))
             else None
         )
-        obj.dist_minima_metros = float(row["dist_minima_metros"]) if pd.notna(row.get("dist_minima_metros")) else None
-        obj.total_medicos_dentro = int(row["total_medicos_dentro"]) if pd.notna(row.get("total_medicos_dentro")) else None
-        obj.total_cnes_dentro = int(row["total_cnes_dentro"]) if pd.notna(row.get("total_cnes_dentro")) else None
+        obj.categoria_acesso = (
+            str(row["categoria_acesso"]) if pd.notna(row.get("categoria_acesso")) else None
+        )
+        obj.categoria_acesso_nivel = (
+            _nivel(str(row["categoria_acesso"])) if pd.notna(row.get("categoria_acesso")) else None
+        )
+        obj.dist_minima_metros = (
+            float(row["dist_minima_metros"]) if pd.notna(row.get("dist_minima_metros")) else None
+        )
+        obj.total_medicos_dentro = (
+            int(row["total_medicos_dentro"]) if pd.notna(row.get("total_medicos_dentro")) else None
+        )
+        obj.total_cnes_dentro = (
+            int(row["total_cnes_dentro"]) if pd.notna(row.get("total_cnes_dentro")) else None
+        )
 
         if geometry_wkt:
             obj.geometry = WKTElement(geometry_wkt, srid=4326)
@@ -139,7 +153,9 @@ def importar_cnes(caminho: Path, session: Session) -> int:
             obj = Cnes(cnes=cnes_val)
         obj.municipio = str(row["municipio"]) if pd.notna(row.get("municipio")) else None
         obj.nome_fantasia = str(row["nome_fantaia"]) if pd.notna(row.get("nome_fantaia")) else None
-        obj.total_medicos = int(row["total_medicos"]) if pd.notna(row.get("total_medicos")) else None
+        obj.total_medicos = (
+            int(row["total_medicos"]) if pd.notna(row.get("total_medicos")) else None
+        )
         obj.latitude = float(row["latitude"]) if pd.notna(row.get("latitude")) else None
         obj.longitude = float(row["longitude"]) if pd.notna(row.get("longitude")) else None
 

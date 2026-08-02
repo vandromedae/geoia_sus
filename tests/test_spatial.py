@@ -1,4 +1,3 @@
-
 from src.services.spatial import (
     buscar_setores_municipio_db,
     buscar_setores_proximos_db,

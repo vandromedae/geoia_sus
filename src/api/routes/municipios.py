@@ -18,5 +18,6 @@ def buscar_municipio(cod_ibge: str, db: Session = Depends(get_db)):
     mun = db.get(Municipio, cod_ibge)
     if not mun:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="Município não encontrado")
     return mun

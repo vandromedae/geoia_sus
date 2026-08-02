@@ -14,16 +14,48 @@ from src.services.spatial import (
 )
 
 SCOPE_KEYWORDS = [
-    "saúde", "saude", "médico", "medico", "médicos", "medicos",
-    "hospital", "ubs", "posto de saúde", "posto de saude",
-    "atenção primaria", "atencao primaria", "acesso",
-    "e2sfca", "densidade", "população", "populacao",
-    "setor", "município", "municipio", "campinas", "santos",
-    "são paulo", "sao paulo", "guarulhos", "sorocaba",
-    "ranking", "comparar", "comparação", "comparacao", "compare",
-    "cnes", "leito", "leitos", "enfermeiro", "enfermeiros",
-    "dentista", "farmácia", "farmacia",
-    "mostre", "exiba", "liste",
+    "saúde",
+    "saude",
+    "médico",
+    "medico",
+    "médicos",
+    "medicos",
+    "hospital",
+    "ubs",
+    "posto de saúde",
+    "posto de saude",
+    "atenção primaria",
+    "atencao primaria",
+    "acesso",
+    "e2sfca",
+    "densidade",
+    "população",
+    "populacao",
+    "setor",
+    "município",
+    "municipio",
+    "campinas",
+    "santos",
+    "são paulo",
+    "sao paulo",
+    "guarulhos",
+    "sorocaba",
+    "ranking",
+    "comparar",
+    "comparação",
+    "comparacao",
+    "compare",
+    "cnes",
+    "leito",
+    "leitos",
+    "enfermeiro",
+    "enfermeiros",
+    "dentista",
+    "farmácia",
+    "farmacia",
+    "mostre",
+    "exiba",
+    "liste",
 ]
 
 
@@ -32,9 +64,7 @@ def _checar_escopo(pergunta: str) -> bool:
     return any(kw in pergunta_lower for kw in SCOPE_KEYWORDS)
 
 
-async def processar_pergunta(
-    pergunta: str, db: Session, llm: LLMClient
-) -> QueryResponse:
+async def processar_pergunta(pergunta: str, db: Session, llm: LLMClient) -> QueryResponse:
     if not _checar_escopo(pergunta):
         return QueryResponse(
             resposta="Essa pergunta está fora do escopo do GeoIA_SUS. "
@@ -71,13 +101,22 @@ async def processar_pergunta(
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": pergunta},
-            {"role": "assistant", "content": "",
-             "tool_calls": [
-                 {"id": tool_call_id, "type": "function",
-                  "function": {"name": tool_name, "arguments": json.dumps(tool_args)}}
-             ]},
-            {"role": "tool", "tool_call_id": tool_call_id,
-             "content": json.dumps(dados_llm, default=str, ensure_ascii=False)},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": tool_call_id,
+                        "type": "function",
+                        "function": {"name": tool_name, "arguments": json.dumps(tool_args)},
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": json.dumps(dados_llm, default=str, ensure_ascii=False),
+            },
         ],
     )
 

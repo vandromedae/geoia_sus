@@ -2,7 +2,11 @@ TOOL_BUSCAR_SETORES_PROXIMOS = {
     "type": "function",
     "function": {
         "name": "buscar_setores_proximos",
-        "description": "Busca setores censitários próximos a um município ou coordenadas. Retorna setores dentro de um raio em km com indicadores de acesso à saúde (E2SFCA).",
+        "description": (
+            "Busca setores censitários próximos a um município ou coordenadas. "
+            "Retorna setores dentro de um raio em km com indicadores de acesso à "
+            "saúde (E2SFCA)."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -17,7 +21,8 @@ TOOL_BUSCAR_SETORES_PROXIMOS = {
                 },
                 "limite_e2sfca": {
                     "type": "number",
-                    "description": "Filtrar setores com E2SFCA menor que este valor (desertos médicos)",
+                    "description": "Filtrar setores com E2SFCA menor que este valor "
+                    "(desertos médicos)",
                 },
                 "limite": {
                     "type": "integer",
@@ -34,7 +39,10 @@ TOOL_RANKING_MUNICIPIOS = {
     "type": "function",
     "function": {
         "name": "ranking_municipios",
-        "description": "Retorna ranking dos municípios de SP por indicador de saúde. Útil para 'quais os piores municípios', 'ranking de acesso'.",
+        "description": (
+            "Retorna ranking dos municípios de SP por indicador de saúde. Útil para "
+            "'quais os piores municípios', 'ranking de acesso'."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -64,7 +72,9 @@ TOOL_COMPARAR_MUNICIPIOS = {
     "type": "function",
     "function": {
         "name": "comparar_municipios",
-        "description": "Compara indicadores de saúde entre 2 ou mais municípios. Retorna dados lado a lado.",
+        "description": (
+            "Compara indicadores de saúde entre 2 ou mais municípios. Retorna dados lado a lado."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -115,4 +125,3 @@ ALL_TOOLS = [
     TOOL_COMPARAR_MUNICIPIOS,
     TOOL_BUSCAR_SETORES_MUNICIPIO,
 ]
-

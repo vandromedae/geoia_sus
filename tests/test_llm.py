@@ -1,4 +1,3 @@
-
 import pytest
 
 from src.llm.fake_client import FakeLLMClient
@@ -51,9 +50,7 @@ class TestOrchestratorWithFakeLLM:
         from src.llm.orchestrator import processar_pergunta
 
         llm = FakeLLMClient(content="São Paulo tem 12 milhões de habitantes.")
-        result = await processar_pergunta(
-            "Qual a população de SP?", db=db_session, llm=llm
-        )
+        result = await processar_pergunta("Qual a população de SP?", db=db_session, llm=llm)
         assert "resposta" in result.model_dump()
         assert result.tool_chamada is None
 
@@ -94,9 +91,7 @@ class TestOrchestratorWithFakeLLM:
             },
             content="Comparação entre Adamantina e Adolfo.",
         )
-        result = await processar_pergunta(
-            "Compare Adamantina e Adolfo", db=db_session, llm=llm
-        )
+        result = await processar_pergunta("Compare Adamantina e Adolfo", db=db_session, llm=llm)
         assert result.tool_chamada == "comparar_municipios"
         assert isinstance(result.dados, list)
 
@@ -112,9 +107,7 @@ class TestOrchestratorWithFakeLLM:
             },
             content="Setores de Adamantina.",
         )
-        result = await processar_pergunta(
-            "Mostre os setores de Adamantina", db=db_session, llm=llm
-        )
+        result = await processar_pergunta("Mostre os setores de Adamantina", db=db_session, llm=llm)
         assert result.tool_chamada == "buscar_setores_municipio"
         assert isinstance(result.dados, dict)
         assert result.dados["total_setores"] == 98
