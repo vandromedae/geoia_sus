@@ -1,3 +1,5 @@
+import json
+
 TOOL_BUSCAR_SETORES_PROXIMOS = {
     "type": "function",
     "function": {
@@ -26,7 +28,7 @@ TOOL_BUSCAR_SETORES_PROXIMOS = {
                 },
                 "limite": {
                     "type": "integer",
-                    "description": "Número máximo de resultados (padrão: 50)",
+                    "description": "Número máximo de resultados (padrão: 50, máx: 100)",
                     "default": 50,
                 },
             },
@@ -60,7 +62,7 @@ TOOL_RANKING_MUNICIPIOS = {
                 },
                 "limite": {
                     "type": "integer",
-                    "description": "Número de municípios no ranking (padrão: 10)",
+                    "description": "Número de municípios no ranking (padrão: 10, máx: 100)",
                     "default": 10,
                 },
             },
@@ -143,3 +145,21 @@ ALL_TOOLS = [
     TOOL_COMPARAR_MUNICIPIOS,
     TOOL_BUSCAR_SETORES_MUNICIPIO,
 ]
+
+
+def carregar_argumentos(bruto) -> dict:
+    """Converte `tool_call.function.arguments` em dict, tolerando o que o modelo devolver.
+
+    Groq/Ollama já devolvem dict quando a chamada foi bem formada, mas também
+    devolvem `""`, JSON truncado ou JSON malformado — um `json.loads` direto
+    derrubava a requisição inteira com `JSONDecodeError` (500).
+    """
+    if isinstance(bruto, dict):
+        return bruto
+    if not bruto:
+        return {}
+    try:
+        dados = json.loads(bruto)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    return dados if isinstance(dados, dict) else {}
