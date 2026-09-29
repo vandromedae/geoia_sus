@@ -51,7 +51,7 @@ cd ..
 ```env
 LLM_PROVIDER=groq
 GROQ_API_KEY=sua_chave_aqui
-GROQ_MODEL=qwen/qwen3.6-27b
+GROQ_MODEL=qwen/qwen3.8-27b
 ```
 
 3. Inicie:
@@ -119,10 +119,13 @@ Requer Python 3.11+, PostgreSQL + PostGIS e [Poetry](https://python-poetry.org/)
 poetry install
 cp .env.example .env   # Editar com suas credenciais
 alembic upgrade head
-poetry run python scripts/download_data.py
-poetry run python scripts/import_data.py
+poetry run python -m scripts.download_data
+poetry run python -m scripts.import_data importar
 poetry run uvicorn src.api.main:app --reload
 ```
+
+P.S: os scripts usam `python -m` porque precisam da raiz do repositório no
+`sys.path` (`python scripts/download_data.py` falharia com `No module named 'src'`).
 
 ## Problemas conhecidos
 

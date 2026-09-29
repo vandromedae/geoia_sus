@@ -76,10 +76,14 @@ class TestCompararMunicipios:
 
 
 class TestBuscarSetoresMunicipio:
-    def test_municipio_required(self):
+    def test_filtros_de_localizacao_opcionais(self):
         params = TOOL_BUSCAR_SETORES_MUNICIPIO["function"]["parameters"]
-        assert "required" in params
-        assert "municipio" in params["required"]
+        props = params["properties"]
+        assert "municipio" in props
+        assert "distrito" in props
+        # Nenhum é obrigatório no schema: o LLM pode conhecer só o distrito
+        # (ex: "Itaim Bibi" sem saber que é de São Paulo).
+        assert not params.get("required", [])
 
     def test_categoria_optional(self):
         params = TOOL_BUSCAR_SETORES_MUNICIPIO["function"]["parameters"]

@@ -1,8 +1,11 @@
+from sqlalchemy import text
+
 from src.services.spatial import (
     buscar_setores_municipio_db,
     buscar_setores_proximos_db,
     comparar_municipios_db,
     ranking_municipios_db,
+    resumo_setores_db,
 )
 
 
@@ -103,3 +106,46 @@ class TestBuscarSetoresMunicipio:
     def test_municipio_inexistente(self, db_session):
         rows = buscar_setores_municipio_db(db_session, municipio="CidadeFantasma")
         assert rows == []
+
+    def test_sem_filtro_de_localizacao_retorna_vazio(self, db_session):
+        # Sem municipio/distrito a query varreria a tabela inteira — deve retornar [].
+        assert buscar_setores_municipio_db(db_session) == []
+        assert buscar_setores_municipio_db(db_session, categoria=1) == []
+        assert resumo_setores_db(db_session) == {"total_setores": 0}
+
+    def test_filtrar_por_distrito(self, db_session):
+        distrito = db_session.execute(
+            text(
+                "SELECT nm_dist FROM setores WHERE nm_dist IS NOT NULL "
+                "GROUP BY 1 ORDER BY count(*) DESC LIMIT 1"
+            )
+        ).scalar()
+        rows = buscar_setores_municipio_db(db_session, distrito=distrito)
+        assert len(rows) > 0
+        assert {r.nm_dist for r in rows} == {distrito}
+
+    def test_ordenado_do_pior_para_o_melhor_acesso(self, db_session):
+        rows = buscar_setores_municipio_db(db_session, municipio="Adamantina")
+        valores = [r.acessibilidade_e2sfca for r in rows if r.acessibilidade_e2sfca is not None]
+        assert valores == sorted(valores)
+
+    def test_limite(self, db_session):
+        rows = buscar_setores_municipio_db(db_session, municipio="Adamantina", limite=5)
+        assert len(rows) <= 5
+
+    def test_resumo_agrega_todos_os_setores(self, db_session):
+        resumo = resumo_setores_db(db_session, municipio="Adamantina")
+        assert resumo["total_setores"] > 0
+        assert resumo["setores_avaliados"] <= resumo["total_setores"]
+        assert resumo["media_e2sfca"] is None or resumo["media_e2sfca"] >= 0
+        assert sum(d["setores"] for d in resumo["distribuicao"]) == resumo["total_setores"]
+
+    def test_resumo_com_distrito(self, db_session):
+        distrito = db_session.execute(
+            text(
+                "SELECT nm_dist FROM setores WHERE nm_dist IS NOT NULL "
+                "GROUP BY 1 ORDER BY count(*) DESC LIMIT 1"
+            )
+        ).scalar()
+        resumo = resumo_setores_db(db_session, distrito=distrito)
+        assert resumo["total_setores"] > 0

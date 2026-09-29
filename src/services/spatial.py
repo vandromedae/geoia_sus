@@ -115,19 +115,21 @@ def comparar_municipios_db(
     return [Municipio(**dict(r)) for r in rows]
 
 
-def buscar_setores_municipio_db(
-    db: Session,
-    municipio: str,
-    categoria: str | int | None = None,
-) -> list[Setor]:
-    query = text("""
-        SELECT s.*,
-               ST_Y(ST_Centroid(s.geometry)) as latitude,
-               ST_X(ST_Centroid(s.geometry)) as longitude
-        FROM setores s
-        WHERE UPPER(s.nm_mun) = UPPER(:municipio)
-    """)
-    params: dict = {"municipio": municipio}
+def _filtros_setores(
+    municipio: str | None,
+    distrito: str | None,
+    categoria: str | int | None,
+) -> tuple[list[str], dict]:
+    """Monta as condições WHERE (somente strings fixas + parâmetros ligados)."""
+    conds: list[str] = []
+    params: dict = {}
+
+    if municipio:
+        conds.append("UPPER(s.nm_mun) = UPPER(:municipio)")
+        params["municipio"] = municipio
+    if distrito:
+        conds.append("UPPER(s.nm_dist) = UPPER(:distrito)")
+        params["distrito"] = distrito
 
     if categoria is not None:
         nivel = categoria if isinstance(categoria, int) else None
@@ -136,25 +138,102 @@ def buscar_setores_municipio_db(
             if match:
                 nivel = int(match.group(1))
         if nivel is not None:
-            query = text("""
-                SELECT s.*,
-                       ST_Y(ST_Centroid(s.geometry)) as latitude,
-                       ST_X(ST_Centroid(s.geometry)) as longitude
-                FROM setores s
-                WHERE UPPER(s.nm_mun) = UPPER(:municipio)
-                  AND s.categoria_acesso_nivel = :categoria
-            """)
+            conds.append("s.categoria_acesso_nivel = :categoria")
             params["categoria"] = nivel
         else:
-            query = text("""
-                SELECT s.*,
-                       ST_Y(ST_Centroid(s.geometry)) as latitude,
-                       ST_X(ST_Centroid(s.geometry)) as longitude
-                FROM setores s
-                WHERE UPPER(s.nm_mun) = UPPER(:municipio)
-                  AND s.categoria_acesso ILIKE :categoria
-            """)
+            conds.append("s.categoria_acesso ILIKE :categoria")
             params["categoria"] = f"%{str(categoria).strip()}%"
 
-    rows = db.execute(query, params).mappings().all()
+    return conds, params
+
+
+def resumo_setores_db(
+    db: Session,
+    municipio: str | None = None,
+    distrito: str | None = None,
+    categoria: str | int | None = None,
+) -> dict:
+    """Agregados de todos os setores que casam o filtro (não só a amostra)."""
+    if not municipio and not distrito:
+        return {"total_setores": 0}
+    conds, params = _filtros_setores(municipio, distrito, categoria)
+    if not conds:
+        return {"total_setores": 0}
+    where = " AND ".join(conds)
+
+    totais = (
+        db.execute(
+            text(f"""
+        SELECT count(*) AS total_setores,
+               count(*) FILTER (WHERE s.acessibilidade_e2sfca IS NOT NULL) AS setores_avaliados,
+               round(avg(s.acessibilidade_e2sfca)::numeric, 6) AS media_e2sfca,
+               min(s.acessibilidade_e2sfca) AS min_e2sfca,
+               max(s.acessibilidade_e2sfca) AS max_e2sfca,
+               count(*) FILTER (WHERE s.total_medicos_dentro > 0) AS setores_com_medico_dentro,
+               count(*) FILTER (WHERE s.categoria_acesso_nivel >= 5) AS setores_acesso_ruim
+        FROM setores s
+        WHERE {where}
+        """),
+            params,
+        )
+        .mappings()
+        .one()
+    )
+
+    distribuicao = [
+        {
+            "categoria": r["categoria_acesso"],
+            "setores": int(r["n"]),
+            "pct": round(100 * int(r["n"]) / max(int(totais["total_setores"]), 1), 1),
+        }
+        for r in db.execute(
+            text(f"""
+            SELECT s.categoria_acesso, count(*) AS n
+            FROM setores s
+            WHERE {where}
+            GROUP BY 1
+            ORDER BY 1
+            """),
+            params,
+        ).mappings()
+    ]
+
+    resumo: dict = {}
+    for chave, valor in dict(totais).items():
+        if valor is None:
+            resumo[chave] = None
+        elif chave.endswith("e2sfca"):
+            resumo[chave] = float(valor)
+        else:
+            resumo[chave] = int(valor)
+    resumo["distribuicao"] = distribuicao
+    return resumo
+
+
+def buscar_setores_municipio_db(
+    db: Session,
+    municipio: str | None = None,
+    categoria: str | int | None = None,
+    distrito: str | None = None,
+    limite: int | None = None,
+) -> list[Setor]:
+    if not municipio and not distrito:
+        return []
+    conds, params = _filtros_setores(municipio, distrito, categoria)
+    if not conds:
+        return []
+
+    sql = f"""
+        SELECT s.*,
+               ST_Y(ST_Centroid(s.geometry)) as latitude,
+               ST_X(ST_Centroid(s.geometry)) as longitude
+        FROM setores s
+        WHERE {" AND ".join(conds)}
+        ORDER BY s.acessibilidade_e2sfca ASC NULLS LAST, s.cd_setor ASC
+    """
+    if limite:
+        sql += " LIMIT :limite"
+        params["limite"] = limite
+
+    rows = db.execute(text(sql), params).mappings().all()
     return [_row_to_setor_with_coords(r) for r in rows]

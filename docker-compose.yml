@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-geoia_sus}
       POSTGRES_USER: ${POSTGRES_USER:-geoai}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-geoai_secret}
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
@@ -23,7 +23,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-geoai}:${POSTGRES_PASSWORD:-geoai_secret}@db:5432/${POSTGRES_DB:-geoia_sus}
       LLM_PROVIDER: ${LLM_PROVIDER:-groq}
       GROQ_API_KEY: ${GROQ_API_KEY}
-      GROQ_MODEL: ${GROQ_MODEL:-qwen-qwq-32b}
+      GROQ_MODEL: ${GROQ_MODEL:-qwen/qwen3.8-27b}
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:8501","http://localhost:3000"]}

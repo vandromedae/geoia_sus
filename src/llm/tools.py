@@ -73,7 +73,12 @@ TOOL_COMPARAR_MUNICIPIOS = {
     "function": {
         "name": "comparar_municipios",
         "description": (
-            "Compara indicadores de saúde entre 2 ou mais municípios. Retorna dados lado a lado."
+            "Retorna os indicadores AGREGADOS de 1 ou mais municípios: total_medicos, "
+            "total_cnes, populacao, area_km2, medicos_por_1k, categoria_densidade. "
+            "USE ESTA FERRAMENTA para perguntas sobre o TOTAL ou a QUANTIDADE de médicos, "
+            "estabelecimentos, população ou área de um município "
+            "(ex: 'quantos médicos tem São Paulo', 'total de médicos em Campinas'). "
+            "Aceita também uma única lista com um município."
         ),
         "parameters": {
             "type": "object",
@@ -81,7 +86,7 @@ TOOL_COMPARAR_MUNICIPIOS = {
                 "municipios": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Lista de nomes dos municípios para comparar",
+                    "description": "Lista de nomes dos municípios (pode conter 1 só)",
                 },
             },
             "required": ["municipios"],
@@ -93,16 +98,30 @@ TOOL_BUSCAR_SETORES_MUNICIPIO = {
     "type": "function",
     "function": {
         "name": "buscar_setores_municipio",
-        "description": "Retorna os setores de um município com seus indicadores de acesso à saúde, "
-        "com filtro opcional por nível de acesso (1 a 6). "
-        "Responde com um resumo: total_setores (total de setores que casam) e "
-        "setores (lista de até 100 setores). Use total_setores na resposta ao usuário.",
+        "description": "Retorna setores censitários de um município e/ou de um DISTRITO/BAIRRO "
+        "com os indicadores de acesso à saúde. Informe municipio e/ou distrito "
+        "(pelo menos um; distrito sozinho também funciona, ex: distrito='Itaim Bibi'). "
+        "Filtro opcional por nível de acesso (1 a 6). "
+        "Responde com: total_setores (total que casa com o filtro), resumo (média de "
+        "acessibilidade_e2sfca, distribuição por categoria e contagens — USE resumo para "
+        "responder 'como é o acesso') e setores (até 100, ordenados do pior para o "
+        "melhor acesso). "
+        "ATENÇÃO: devolve setores INDIVIDUAIS, não totais do município. "
+        "NUNCA some total_medicos_dentro — o raio de 5 km se sobrepõe entre setores e a "
+        "soma superestima o total. Para totais de um município, use comparar_municipios.",
         "parameters": {
             "type": "object",
             "properties": {
                 "municipio": {
                     "type": "string",
-                    "description": "Nome do município",
+                    "description": "Nome do município (ex: 'São Paulo', 'Campinas')",
+                },
+                "distrito": {
+                    "type": "string",
+                    "description": "Nome do distrito ou bairro dentro do município "
+                    "(ex: 'Itaim Bibi', 'Pinheiros', 'Pirituba'). Se souber o município, "
+                    "informe também: existem distritos homônimos em municípios diferentes "
+                    "(ex: 'Pinheiros' existe em São Paulo e em Lavrinhas).",
                 },
                 "categoria": {
                     "type": "integer",
@@ -114,7 +133,6 @@ TOOL_BUSCAR_SETORES_MUNICIPIO = {
                     "maximum": 6,
                 },
             },
-            "required": ["municipio"],
         },
     },
 }

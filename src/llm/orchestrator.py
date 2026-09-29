@@ -11,6 +11,7 @@ from src.services.spatial import (
     buscar_setores_proximos_db,
     comparar_municipios_db,
     ranking_municipios_db,
+    resumo_setores_db,
 )
 
 SCOPE_KEYWORDS = [
@@ -146,15 +147,18 @@ def _resumir_para_llm(dados: list[dict] | dict) -> list[dict] | dict:
     """Projeção compacta do resultado da ferramenta para o contexto do LLM."""
     if not isinstance(dados, dict) or "setores" not in dados:
         return dados
+    # A amostra já vem ordenada do pior para o melhor acesso (ORDER BY da query).
     amostra = [
         {k: v for k, v in s.items() if k not in ("latitude", "longitude")}
-        for s in dados["setores"][:30]
+        for s in dados["setores"][:20]
     ]
     return {
         "municipio": dados.get("municipio"),
+        "distrito": dados.get("distrito"),
         "categoria": dados.get("categoria"),
         "total_setores": dados.get("total_setores"),
-        "amostra": amostra,
+        "resumo": dados.get("resumo"),
+        "amostra_ordenada_do_pior_para_o_melhor_acesso": amostra,
     }
 
 
@@ -227,12 +231,17 @@ def _executar_tool(name: str, args: dict, db: Session) -> list[dict] | dict:
 
     elif name == "buscar_setores_municipio":
         municipio = args.get("municipio")
-        if not municipio:
-            return {"erro": "Parâmetro 'municipio' é obrigatório"}
+        distrito = args.get("distrito")
+        if not municipio and not distrito:
+            return {"erro": "Informe ao menos um filtro: 'municipio' ou 'distrito'"}
+        categoria = args.get("categoria")
+        resumo = resumo_setores_db(db, municipio=municipio, distrito=distrito, categoria=categoria)
         rows = buscar_setores_municipio_db(
             db,
             municipio=municipio,
-            categoria=args.get("categoria"),
+            distrito=distrito,
+            categoria=categoria,
+            limite=100,
         )
         setores = [
             {
@@ -250,9 +259,11 @@ def _executar_tool(name: str, args: dict, db: Session) -> list[dict] | dict:
         ]
         return {
             "municipio": municipio,
-            "categoria": args.get("categoria"),
-            "total_setores": len(setores),
-            "setores": setores[:100],
+            "distrito": distrito,
+            "categoria": categoria,
+            "total_setores": resumo["total_setores"],
+            "resumo": resumo,
+            "setores": setores,
         }
 
     return {"erro": f"Tool desconhecida: {name}"}

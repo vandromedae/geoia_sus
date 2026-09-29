@@ -1,17 +1,23 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings
 
+# Modelos confirmados como disponíveis no Groq (tier free).
+GROQ_MODEL_PADRAO = "qwen/qwen3.8-27b"
+
 
 class Settings(BaseSettings):
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # extra="ignore": o .env é compartilhado com o docker-compose e contém chaves
+    # que a aplicação não usa (POSTGRES_PASSWORD, POSTGRES_DB, ...).
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
-    database_url: str
-    llm_provider: str
-    groq_api_key: str
-    groq_model: str
-    ollama_url: str
-    ollama_model: str
+    database_url: str = "postgresql://geoai:geoai_secret@localhost:5432/geoia_sus"
+    llm_provider: Literal["groq", "ollama", "fake"] = "groq"
+    groq_api_key: str = ""
+    groq_model: str = GROQ_MODEL_PADRAO
+    ollama_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen3:8b"
     cors_origins: list[str] = ["http://localhost:8501"]
 
 
