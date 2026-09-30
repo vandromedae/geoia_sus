@@ -23,7 +23,7 @@ def client(fake_llm):
 
 
 class TestHealth:
-    def test_health_endpoint(self, client):
+    def test_health_endpoint(self, client, exige_banco):
         resp = client.get("/health")
         assert resp.status_code == 200
         data = resp.json()
@@ -33,14 +33,14 @@ class TestHealth:
 
 
 class TestMunicipios:
-    def test_listar_municipios(self, client):
+    def test_listar_municipios(self, client, exige_banco):
         resp = client.get("/municipios/")
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
         assert len(data) > 0
 
-    def test_municipio_structure(self, client):
+    def test_municipio_structure(self, client, exige_banco):
         resp = client.get("/municipios/")
         data = resp.json()
         mun = data[0]
@@ -48,27 +48,28 @@ class TestMunicipios:
         assert "nm_mun" in mun
         assert "populacao" in mun
 
-    def test_buscar_municipio_existente(self, client):
-        resp = client.get("/municipios/350010")
+    def test_buscar_municipio_existente(self, client, exige_banco):
+        resp = client.get("/municipios/3500105")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["cod_mun_ibge"] == "350010"
+        assert data["cod_mun_ibge"] == "3500105"
         assert data["nm_mun"] == "Adamantina"
 
-    def test_buscar_municipio_inexistente(self, client):
+    def test_buscar_municipio_inexistente(self, client, exige_banco):
         resp = client.get("/municipios/999999")
         assert resp.status_code == 404
 
 
 class TestQuery:
     def test_query_simples(self, client):
-        resp = client.post("/query", json={"pergunta": "Olá"})
+        # Precisa passar pelo gate de escopo ("Olá" era recusado antes do LLM).
+        resp = client.post("/query", json={"pergunta": "Quantos médicos tem Adamantina?"})
         assert resp.status_code == 200
         data = resp.json()
         assert "resposta" in data
 
     def test_query_estrutura(self, client):
-        resp = client.post("/query", json={"pergunta": "teste"})
+        resp = client.post("/query", json={"pergunta": "Liste os municípios com menos médicos"})
         data = resp.json()
         assert "resposta" in data
         assert "dados" in data
@@ -116,3 +117,82 @@ class TestErrosDoLLM:
         resp = client.post("/query", json={"pergunta": "quantos médicos tem São Paulo"})
         assert resp.status_code == 502
         assert "500" not in resp.text
+
+
+class _LLMContador:
+    def __init__(self, conteudo="Resposta simulada do LLM."):
+        self.chamadas = 0
+        self.conteudo = conteudo
+
+    def chat(self, messages, tools=None):
+        self.chamadas += 1
+        return {"content": self.conteudo}
+
+
+class TestHealthSemBanco:
+    def test_health_503_quando_banco_fora(self, client, monkeypatch):
+        from src.api.routes import health as modulo_health
+
+        class _MotorQuebrado:
+            def connect(self):
+                raise RuntimeError("banco fora")
+
+        monkeypatch.setattr(modulo_health, "engine", _MotorQuebrado())
+
+        resp = client.get("/health")
+
+        assert resp.status_code == 503
+        assert resp.json() == {"status": "error", "database": "unavailable"}
+
+
+class TestMunicipiosPaginacaoECache:
+    def test_paginacao_retorna_blocos_distintos(self, client, exige_banco):
+        primeiro = client.get("/municipios/?limite=3&offset=0").json()
+        segundo = client.get("/municipios/?limite=3&offset=3").json()
+
+        assert len(primeiro) == 3
+        assert len(segundo) == 3
+        assert {m["cod_mun_ibge"] for m in primeiro}.isdisjoint(
+            {m["cod_mun_ibge"] for m in segundo}
+        )
+
+    def test_limite_invalido_e_rejeitado(self, client):
+        assert client.get("/municipios/?limite=0").status_code == 422
+        assert client.get("/municipios/?offset=-1").status_code == 422
+
+    def test_segunda_chamada_vem_do_cache(self, client, exige_banco):
+        from src.services.cache import cache_get, make_key
+
+        client.get("/municipios/?limite=2&offset=0")
+        assert cache_get(make_key("municipios", 2, 0)) is not None
+        assert cache_get(make_key("municipios", 2, 50)) is None
+
+    def test_unico_municipio_entra_no_cache(self, client, exige_banco):
+        from src.services.cache import cache_get, make_key
+
+        client.get("/municipios/3500105")
+        assert cache_get(make_key("municipio", "3500105")) is not None
+
+
+class TestCacheDaPergunta:
+    def test_pergunta_repetida_nao_chama_o_llm_de_novo(self, client):
+        contador = _LLMContador()
+        app.dependency_overrides[get_llm_client] = lambda: contador
+
+        primeira = client.post("/query", json={"pergunta": "Quantos médicos tem São Paulo?"})
+        segunda = client.post("/query", json={"pergunta": "quantos medicos tem sao paulo?"})
+
+        assert contador.chamadas == 1
+        assert primeira.json()["resposta"] == segunda.json()["resposta"]
+
+    def test_resposta_de_fallback_nao_entra_no_cache(self, client):
+        contador = _LLMContador(conteudo="")
+        app.dependency_overrides[get_llm_client] = lambda: contador
+        pergunta = "quantos médicos tem Campinas?"
+
+        resp = client.post("/query", json={"pergunta": pergunta})
+
+        assert resp.json()["resposta_de_fallback"] is True
+        from src.services.cache import cache_get, make_key, normalizar_texto
+
+        assert cache_get(make_key("query", normalizar_texto(pergunta))) is None

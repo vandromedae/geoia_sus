@@ -13,7 +13,7 @@ em mapa interativo e obtenha insights baseados em dados reais do CNES/DATASUS e 
 - **LLM:** Groq (Qwen3) ou Ollama (local)
 - **Banco:** PostgreSQL + PostGIS
 - **Frontend:** Streamlit + Folium
-- **Testes:** pytest (45 testes)
+- **Testes:** pytest (164 testes; os de integração são pulados se o PostGIS não estiver no ar)
 - **Migrações:** Alembic
 
 ## Instalação e uso
@@ -80,6 +80,10 @@ OLLAMA_MODEL=qwen3:8b
 make up-offline
 ```
 
+`make up-offline` já força `LLM_PROVIDER=ollama` e `OLLAMA_URL` como variáveis
+de ambiente do Compose — elas têm prioridade sobre o `.env`, **sem alterar o
+arquivo**. Para trocar o modelo, ajuste `OLLAMA_MODEL` no `.env`.
+
 ---
 
 ### Primeira execução
@@ -103,11 +107,12 @@ O script entrypoint.sh do container automaticamente:
 
 ```bash
 make up            # Iniciar com Groq (ou o que estiver no .env)
-make up-offline    # Iniciar com Ollama (sobrescreve .env)
+make up-offline    # Iniciar com Ollama (env vars do shell; não mexe no .env)
 make down          # Parar tudo
-make test          # Rodar 45 testes
-make lint          # Verificar estilo (ruff)
-make format        # Formatar código
+make test          # Rodar os testes (sem banco: os de integração são pulados)
+make lint          # ruff check + format em src, tests, frontend, scripts e alembic
+make format        # Formatar código nos mesmos alvos
+make db-check      # alembic check: models x schema (precisa do banco no ar)
 make clean         # Limpar caches
 ```
 
@@ -126,6 +131,25 @@ poetry run uvicorn src.api.main:app --reload
 
 P.S: os scripts usam `python -m` porque precisam da raiz do repositório no
 `sys.path` (`python scripts/download_data.py` falharia com `No module named 'src'`).
+
+### Testes
+
+```bash
+make test
+```
+
+Os testes de integração (`tests/test_spatial.py`, `tests/test_data.py`,
+`tests/test_llm.py` e boa parte de `tests/test_api.py`) consultam o PostGIS.
+Com o banco no ar (`make up`) o conjunto completo roda; **sem banco eles são
+pulados automaticamente** e o restante — roteamento, serialização, ferramentas
+com `spatial` mockado, cache, erros do LLM e frontend — roda normal. É o que
+faz o `make test` e o CI funcionarem sem Docker.
+
+Para conferir que os models batem com o schema (com o banco no ar):
+
+```bash
+make db-check   # poetry run alembic check
+```
 
 ## Problemas conhecidos
 

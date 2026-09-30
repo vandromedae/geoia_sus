@@ -1,4 +1,6 @@
-.PHONY: up down test lint format clean
+LINT_ALVOS = src tests frontend scripts alembic
+
+.PHONY: up down up-offline test test-cov lint format db-check clean
 
 up:
 	docker compose up -d --build
@@ -16,11 +18,16 @@ test-cov:
 	poetry run pytest --cov=src --cov-report=term-missing
 
 lint:
-	poetry run ruff check src tests
-	poetry run ruff format --check src tests
+	poetry run ruff check $(LINT_ALVOS)
+	poetry run ruff format --check $(LINT_ALVOS)
 
 format:
-	poetry run ruff format src tests
+	poetry run ruff format $(LINT_ALVOS)
+
+# Confere se os models batem com o schema. Precisa do banco no ar (`make up`)
+# e das migrations aplicadas (`poetry run alembic upgrade head`).
+db-check:
+	poetry run alembic check
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +

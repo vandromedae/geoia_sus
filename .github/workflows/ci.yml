@@ -48,22 +48,30 @@ jobs:
 
       - name: Lint
         run: |
-          poetry run ruff check src tests
-          poetry run ruff format --check src tests
+          poetry run ruff check src tests frontend scripts alembic
+          poetry run ruff format --check src tests frontend scripts alembic
 
       - name: Run Alembic migrations
         run: |
           poetry run alembic upgrade head
+
+      - name: Check schema matches models
+        run: poetry run alembic check
 
       - name: Import fixtures
         run: |
           poetry run python -c "
           from pathlib import Path
           from src.database import SessionLocal
-          from src.services.data import importar_municipios, importar_setores
+          from src.services.data import (
+              atualizar_centroides, atualizar_codigos_ibge,
+              importar_municipios, importar_setores,
+          )
           s = SessionLocal()
           n1 = importar_municipios(Path('tests/fixtures/municipios.parquet'), s)
           n2 = importar_setores(Path('tests/fixtures/setores.parquet'), s)
+          print('codigos ibge:', atualizar_codigos_ibge(s))
+          print('centroides:', atualizar_centroides(s))
           s.close()
           print(f'Imported {n1} municipios, {n2} setores')
           "

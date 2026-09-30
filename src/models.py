@@ -8,7 +8,10 @@ from src.database import Base
 class Municipio(Base):
     __tablename__ = "municipios"
 
-    cod_mun_ibge: Mapped[str] = mapped_column(String(6), primary_key=True)
+    # Código oficial IBGE do município, 7 dígitos (ex.: 3500105 = Adamantina).
+    # A origem publicava 6 dígitos (o check digit cortado), que não junta com
+    # nenhuma base externa; ver `src/services/data.py::atualizar_codigos_ibge`.
+    cod_mun_ibge: Mapped[str] = mapped_column(String(7), primary_key=True)
     nm_mun: Mapped[str] = mapped_column(String)
     populacao: Mapped[float | None] = mapped_column(Float)
     area_km2: Mapped[float | None] = mapped_column(Float)
@@ -19,6 +22,11 @@ class Municipio(Base):
     categoria_densidade: Mapped[str | None] = mapped_column(String)
     categoria_densidade_nivel: Mapped[int | None] = mapped_column(Integer)
     uf: Mapped[str | None] = mapped_column(String(2))
+    # Centroide pré-computado dos setores do município. Usado como ponto de
+    # referência de `buscar_setores_proximos`; sem ele a query precisava fazer
+    # ST_Centroid(ST_Collect(...)) de todos os polígonos a cada chamada (~2 s
+    # em São Paulo). Backfill em `src/services/data.py::atualizar_centroides`.
+    centroide: Mapped[str | None] = mapped_column(Geometry("POINT", srid=4326))
 
     __table_args__ = (
         CheckConstraint(
@@ -67,7 +75,7 @@ class Setor(Base):
     v0005: Mapped[float | None] = mapped_column(Float)
     v0006: Mapped[float | None] = mapped_column(Float)
     v0007: Mapped[float | None] = mapped_column(Float)
-    cod_mun_ibge: Mapped[str | None] = mapped_column(String(6))
+    cod_mun_ibge: Mapped[str | None] = mapped_column(String(7))
     acessibilidade_e2sfca: Mapped[float | None] = mapped_column(Float)
     categoria_acesso: Mapped[str | None] = mapped_column(String)
     categoria_acesso_nivel: Mapped[int | None] = mapped_column(Integer)

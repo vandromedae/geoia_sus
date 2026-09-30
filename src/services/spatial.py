@@ -1,4 +1,6 @@
+import math
 import re
+from typing import NamedTuple
 
 from sqlalchemy import asc, desc, text
 from sqlalchemy.orm import Session
@@ -6,6 +8,250 @@ from sqlalchemy.orm import Session
 from src.models import Municipio, Setor
 
 _NIVEL_RE = re.compile(r"(\d+)")
+# fuzzystrmatch recusa strings acima de 255 caracteres.
+_MAX_NOME = 255
+
+
+class Resolucao(NamedTuple):
+    """Tradução de um nome digitado pelo usuário para o nome que está no banco.
+
+    `erro` é uma mensagem pronta para o usuário — é assim que se distingue
+    "município não existe" de "município existe mas não tem resultado".
+    """
+
+    nome: str | None = None
+    codigo: str | None = None
+    erro: str | None = None
+
+
+def _limite_fuzzy(nome: str) -> int:
+    return max(2, len(nome) // 3)
+
+
+def resolver_municipio(db: Session, nome: str) -> Resolucao:
+    """Resolve o nome com `unaccent` + caixa e, na falta, fuzzy (`levenshtein`).
+
+    Sem `unaccent`, "sao paulo" não casava com "São Paulo" e o usuário via
+    "Nenhum resultado encontrado" para um município que existe.
+    """
+    nome = (nome or "").strip()[:_MAX_NOME]
+    if not nome:
+        return Resolucao(erro="Informe o nome do município.")
+
+    exato = (
+        db.execute(
+            text("""
+            SELECT cod_mun_ibge, nm_mun FROM municipios
+            WHERE unaccent(upper(nm_mun)) = unaccent(upper(:nome))
+            LIMIT 1
+        """),
+            {"nome": nome},
+        )
+        .mappings()
+        .first()
+    )
+    if exato:
+        return Resolucao(nome=exato["nm_mun"], codigo=exato["cod_mun_ibge"])
+
+    candidato = (
+        db.execute(
+            text("""
+            SELECT cod_mun_ibge, nm_mun,
+                   levenshtein(unaccent(upper(nm_mun)), unaccent(upper(:nome))) AS dist
+            FROM municipios
+            ORDER BY dist
+            LIMIT 1
+        """),
+            {"nome": nome},
+        )
+        .mappings()
+        .first()
+    )
+    if candidato and int(candidato["dist"]) <= _limite_fuzzy(nome):
+        return Resolucao(
+            erro=f'Município "{nome}" não encontrado em São Paulo. '
+            f'Você quis dizer "{candidato["nm_mun"]}"?'
+        )
+    return Resolucao(erro=f'Município "{nome}" não encontrado em São Paulo.')
+
+
+def resolver_distrito(db: Session, distrito: str, municipio: str | None = None) -> Resolucao:
+    """Resolve distrito/bairro, avisando quando o nome é ambíguo entre municípios."""
+    distrito = (distrito or "").strip()[:_MAX_NOME]
+    if not distrito:
+        return Resolucao(erro="Informe o nome do distrito.")
+
+    params: dict = {"nome": distrito}
+    condicoes = []
+    if municipio:
+        # `municipio` chega canônico (vindo de `resolver_municipio`), então o
+        # UPPER puro já basta e aproveita o índice composto.
+        condicoes.append("UPPER(nm_mun) = UPPER(:municipio)")
+        params["municipio"] = municipio.strip()[:_MAX_NOME]
+    cond_municipio = "".join(f" AND {c}" for c in condicoes)
+
+    def _consulta(condicao: str) -> list:
+        return (
+            db.execute(
+                text(
+                    """
+                SELECT DISTINCT nm_dist, nm_mun FROM setores
+                WHERE nm_dist IS NOT NULL AND nm_dist <> ''
+                """
+                    f" AND {condicao}{cond_municipio}"
+                    """
+                ORDER BY nm_mun, nm_dist
+                """
+                ),
+                params,
+            )
+            .mappings()
+            .all()
+        )
+
+    # Índex puro primeiro (case-insensitive); `unaccent()` não é indexável,
+    # então só é consultado quando o UPPER não achou nada.
+    encontrados = _consulta("UPPER(nm_dist) = UPPER(:nome)")
+    if not encontrados:
+        encontrados = _consulta("unaccent(upper(nm_dist)) = unaccent(upper(:nome))")
+
+    if len(encontrados) == 1:
+        return Resolucao(nome=encontrados[0]["nm_dist"])
+    if len(encontrados) > 1:
+        lugares = ", ".join(sorted({r["nm_mun"] for r in encontrados}))
+        return Resolucao(
+            erro=f'O distrito "{distrito}" existe em mais de um município '
+            f"({lugares}). Informe também o município."
+        )
+
+    candidato = (
+        db.execute(
+            text("""
+            SELECT nm_dist,
+                   levenshtein(unaccent(upper(nm_dist)), unaccent(upper(:nome))) AS dist
+            FROM (SELECT DISTINCT nm_dist FROM setores
+                   WHERE nm_dist IS NOT NULL AND nm_dist <> '') d
+            ORDER BY dist
+            LIMIT 1
+        """),
+            {"nome": distrito},
+        )
+        .mappings()
+        .first()
+    )
+    if candidato and int(candidato["dist"]) <= _limite_fuzzy(distrito):
+        return Resolucao(
+            erro=f'Distrito "{distrito}" não encontrado. Você quis dizer "{candidato["nm_dist"]}"?'
+        )
+    return Resolucao(erro=f'Distrito "{distrito}" não encontrado.')
+
+
+def _ponto_referencia(db: Session, codigo: str) -> tuple[float, float] | None:
+    """(lat, lon) do centro do município, lendo o centroide pré-computado.
+
+    O `COALESCE` cai no cálculo a partir dos setores apenas quando o centroide
+    ainda não foi preenchido (banco recém-criado, antes do import).
+    """
+    linha = (
+        db.execute(
+            text("""
+            SELECT ST_Y(p.g) AS lat, ST_X(p.g) AS lon
+            FROM (
+                SELECT COALESCE(
+                    m.centroide,
+                    (SELECT ST_Centroid(ST_Collect(s.geometry)) FROM setores s
+                      WHERE s.cod_mun_ibge = m.cod_mun_ibge AND s.geometry IS NOT NULL)
+                ) AS g
+                FROM municipios m
+                WHERE m.cod_mun_ibge = :codigo
+            ) p
+        """),
+            {"codigo": codigo},
+        )
+        .mappings()
+        .first()
+    )
+    if not linha or linha["lat"] is None or linha["lon"] is None:
+        return None
+    return float(linha["lat"]), float(linha["lon"])
+
+
+def _delta_graus(raio_km: float, lat: float) -> float:
+    """Meia-largura (em graus) que cobre o círculo de `raio_km`.
+
+    Dois papéis, uma constante só:
+
+    * `&& ST_Expand(...)` — é o que aciona o índice GiST (sem a caixa a
+      consulta de São Paulo levava 6,2 s; com ela, 0,7 s).
+    * `ST_DWithin(geom, ponto, delta)` — filtro de distância em graus
+      planares. Usar `::geography` aqui custava ~1,1 s (recalcula cada
+      vértice em coordenadas esféricas); em graus cai para ~50 ms.
+
+    O divisor é o comprimento de um grau de **longitude** na latitude de
+    referência, o menor dos dois eixos — assim o círculo planar é sempre um
+    superconjunto do círculo verdadeiro (folga de ~9% no eixo norte-sul).
+    """
+    cos_lat = max(abs(math.cos(math.radians(lat))), 0.2)
+    return raio_km / (111.32 * cos_lat)
+
+
+def buscar_setores_proximos_db(
+    db: Session,
+    municipio: str,
+    raio_km: float = 30,
+    limite_e2sfca: float | None = None,
+    limite: int = 50,
+) -> list[Setor]:
+    resolucao = resolver_municipio(db, municipio)
+    if not resolucao.codigo:
+        return []
+    ponto = _ponto_referencia(db, resolucao.codigo)
+    if ponto is None:
+        return []
+    lat, lon = ponto
+
+    params: dict = {
+        "lon": lon,
+        "lat": lat,
+        "delta": _delta_graus(raio_km, lat),
+        "limite": limite,
+    }
+    condicao_extra = ""
+    if limite_e2sfca is not None:
+        params["limite_e2sfca"] = limite_e2sfca
+        condicao_extra = "AND s.acessibilidade_e2sfca < :limite_e2sfca"
+
+    # Seleciona e ordena sem calcular centroides; só as `limite` linhas finais
+    # pagam o ST_Centroid (antes rodava para os ~40 mil setores dentro do raio).
+    rows = (
+        db.execute(
+            text(f"""
+        WITH ref AS MATERIALIZED (
+            SELECT ST_SetSRID(ST_MakePoint(:lon, :lat), 4326) AS g
+        ),
+        candidatos AS (
+            SELECT s.cd_setor, s.acessibilidade_e2sfca
+            FROM setores s, ref
+            WHERE s.geometry IS NOT NULL
+              AND s.geometry && ST_Expand(ref.g, :delta)
+              AND ST_DWithin(s.geometry, ref.g, :delta)
+              {condicao_extra}
+            ORDER BY s.acessibilidade_e2sfca ASC
+            LIMIT :limite
+        )
+        SELECT s.*,
+               ST_Y(ST_Centroid(s.geometry)) AS latitude,
+               ST_X(ST_Centroid(s.geometry)) AS longitude
+        FROM candidatos c
+        JOIN setores s ON s.cd_setor = c.cd_setor
+        ORDER BY c.acessibilidade_e2sfca ASC, c.cd_setor ASC
+        """),
+            params,
+        )
+        .mappings()
+        .all()
+    )
+    return [_row_to_setor_with_coords(r) for r in rows]
 
 
 def _row_to_setor_with_coords(row) -> Setor:
@@ -16,54 +262,6 @@ def _row_to_setor_with_coords(row) -> Setor:
     s.latitude = lat
     s.longitude = lon
     return s
-
-
-def buscar_setores_proximos_db(
-    db: Session,
-    municipio: str,
-    raio_km: float = 30,
-    limite_e2sfca: float | None = None,
-    limite: int = 50,
-) -> list[Setor]:
-    params: dict = {"municipio": municipio, "raio_metros": raio_km * 1000, "limite": limite}
-
-    if limite_e2sfca is not None:
-        params["limite_e2sfca"] = limite_e2sfca
-        query = text("""
-            SELECT s.*,
-                   ST_Y(ST_Centroid(s.geometry)) as latitude,
-                   ST_X(ST_Centroid(s.geometry)) as longitude
-            FROM setores s
-            WHERE s.geometry IS NOT NULL
-              AND ST_DWithin(
-                s.geometry::geography,
-                (SELECT ST_SetSRID(ST_Centroid(ST_Union(geometry)), 4326) FROM setores
-                 WHERE UPPER(nm_mun) = UPPER(:municipio) AND geometry IS NOT NULL)::geography,
-                :raio_metros
-              )
-              AND s.acessibilidade_e2sfca < :limite_e2sfca
-            ORDER BY s.acessibilidade_e2sfca ASC
-            LIMIT :limite
-        """)
-    else:
-        query = text("""
-            SELECT s.*,
-                   ST_Y(ST_Centroid(s.geometry)) as latitude,
-                   ST_X(ST_Centroid(s.geometry)) as longitude
-            FROM setores s
-            WHERE s.geometry IS NOT NULL
-              AND ST_DWithin(
-                s.geometry::geography,
-                (SELECT ST_SetSRID(ST_Centroid(ST_Union(geometry)), 4326) FROM setores
-                 WHERE UPPER(nm_mun) = UPPER(:municipio) AND geometry IS NOT NULL)::geography,
-                :raio_metros
-              )
-            ORDER BY s.acessibilidade_e2sfca ASC
-            LIMIT :limite
-        """)
-
-    rows = db.execute(query, params).mappings().all()
-    return [_row_to_setor_with_coords(r) for r in rows]
 
 
 def ranking_municipios_db(
@@ -97,14 +295,14 @@ def comparar_municipios_db(
     if not municipios:
         return []
 
-    placeholders = ", ".join([f"UPPER(:m{i})" for i in range(len(municipios))])
+    placeholders = ", ".join([f"unaccent(upper(:m{i}))" for i in range(len(municipios))])
     params = {f"m{i}": m for i, m in enumerate(municipios)}
 
     rows = (
         db.execute(
             text(f"""
             SELECT * FROM municipios
-            WHERE UPPER(nm_mun) IN ({placeholders})
+            WHERE unaccent(upper(nm_mun)) IN ({placeholders})
         """),
             params,
         )

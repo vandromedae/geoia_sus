@@ -1,6 +1,7 @@
 import json
 import threading
 import time
+import unicodedata
 from typing import Any
 
 from src.config import CACHE_TTL
@@ -31,3 +32,17 @@ def cache_clear():
 
 def make_key(*args) -> str:
     return json.dumps(args, sort_keys=True, default=str)
+
+
+def normalizar_texto(texto: str) -> str:
+    """Chave de cache insensível a acento, caixa, pontuação e espaços.
+
+    "Quantos médicos tem São Paulo?" e "quantos medicos tem Sao paulo" são a
+    mesma pergunta para o modelo — e cada chamada custa cotas do tier free do
+    Groq.
+    """
+    sem_acentos = "".join(
+        c for c in unicodedata.normalize("NFKD", texto or "") if not unicodedata.combining(c)
+    )
+    so_palavras = "".join(c if c.isalnum() or c.isspace() else " " for c in sem_acentos)
+    return " ".join(so_palavras.casefold().split())

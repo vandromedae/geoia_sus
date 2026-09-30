@@ -5,6 +5,8 @@ from src.services.spatial import (
     buscar_setores_proximos_db,
     comparar_municipios_db,
     ranking_municipios_db,
+    resolver_distrito,
+    resolver_municipio,
     resumo_setores_db,
 )
 
@@ -149,3 +151,55 @@ class TestBuscarSetoresMunicipio:
         ).scalar()
         resumo = resumo_setores_db(db_session, distrito=distrito)
         assert resumo["total_setores"] > 0
+
+
+class TestResolversDeNome:
+    """ "sao paulo" ≠ "São Paulo" fazia a consulta voltar vazia e virar
+    "Nenhum resultado" para o usuário."""
+
+    def test_municipio_sem_acento_nem_caixa(self, db_session):
+        resolucao = resolver_municipio(db_session, "SAO PAULO")
+        assert resolucao.erro is None
+        assert resolucao.nome == "São Paulo"
+
+    def test_municipio_fuzzy_sugere(self, db_session):
+        """Nome errado não resolve em silêncio: devolve a sugestão e o modelo
+        refaz a chamada com o nome certo."""
+        resolucao = resolver_municipio(db_session, "campinias")
+        assert resolucao.erro is not None
+        assert 'Você quis dizer "Campinas"?' in resolucao.erro
+
+    def test_municipio_inexistente(self, db_session):
+        resolucao = resolver_municipio(db_session, "CidadeFantasmaXYZ")
+        assert resolucao.erro is not None
+        assert "não encontrado" in resolucao.erro
+
+    def test_municipio_quase_certo_sugere(self, db_session):
+        resolucao = resolver_municipio(db_session, "adamantin")
+        assert resolucao.erro is not None
+        assert "Adamantina" in resolucao.erro
+
+    def test_distrito_com_municipio(self, db_session):
+        resolucao = resolver_distrito(db_session, "itaim bibi", "São Paulo")
+        assert resolucao.erro is None
+        assert resolucao.nome == "Itaim Bibi"
+
+    def test_distrito_sem_municipio_sendo_ambiguo(self, db_session):
+        resolucao = resolver_distrito(db_session, "pinheiros")
+        assert resolucao.erro is not None
+        assert "mais de um município" in resolucao.erro
+
+    def test_distrito_ambiguo_vira_erro_mesmo_sem_municipio_nulo(self, db_session):
+        resolucao = resolver_distrito(db_session, "pinheiros", None)
+        assert resolucao.erro is not None
+        assert "Informe também o município" in resolucao.erro
+
+    def test_distrito_inexistente(self, db_session):
+        resolucao = resolver_distrito(db_session, "xyzabc", "São Paulo")
+        assert resolucao.erro is not None
+        assert "não encontrado" in resolucao.erro
+
+    def test_distrito_sem_acento(self, db_session):
+        resolucao = resolver_distrito(db_session, "itaim bibi".upper(), "São Paulo")
+        assert resolucao.erro is None
+        assert resolucao.nome == "Itaim Bibi"

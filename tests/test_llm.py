@@ -239,13 +239,13 @@ class TestRespostaDeFallback:
 
 class TestResumirParaLLM:
     def test_lista_e_truncada_e_sem_coordenadas(self):
-        from src.llm.orchestrator import _resumir_para_llm
+        from src.llm.serializacao import resumir_para_llm
 
         lista = [
             {"cd_setor": str(i), "latitude": -23.5, "longitude": -46.6, "v0001": i}
             for i in range(50)
         ]
-        projecao = _resumir_para_llm(lista)
+        projecao = resumir_para_llm(lista)
 
         assert projecao["total_itens"] == 50
         assert len(projecao["itens"]) == 20
@@ -254,7 +254,7 @@ class TestResumirParaLLM:
         assert projecao["itens"][0]["cd_setor"] == "0"
 
     def test_dict_de_setores_mantem_resumo_e_total(self):
-        from src.llm.orchestrator import _resumir_para_llm
+        from src.llm.serializacao import resumir_para_llm
 
         dados = {
             "municipio": "Adamantina",
@@ -267,7 +267,7 @@ class TestResumirParaLLM:
                 {"cd_setor": "2", "latitude": -23.6, "longitude": -46.7},
             ],
         }
-        projecao = _resumir_para_llm(dados)
+        projecao = resumir_para_llm(dados)
 
         assert projecao["total_setores"] == 98
         assert projecao["resumo"] == {"media_e2sfca": 0.5}
@@ -275,10 +275,10 @@ class TestResumirParaLLM:
         assert "latitude" not in projecao["amostra_ordenada_do_pior_para_o_melhor_acesso"][0]
 
     def test_dict_de_erro_e_repassado_intacto(self):
-        from src.llm.orchestrator import _resumir_para_llm
+        from src.llm.serializacao import resumir_para_llm
 
         erro = {"erro": "Parâmetro 'municipio' é obrigatório"}
-        assert _resumir_para_llm(erro) == erro
+        assert resumir_para_llm(erro) == erro
 
 
 class TestClampLimite:
@@ -296,6 +296,221 @@ class TestClampLimite:
         ],
     )
     def test_clamp(self, valor, padrao, esperado):
-        from src.llm.orchestrator import _clamp_limite
+        from src.llm.ferramentas import clamp_limite
 
-        assert _clamp_limite(valor, padrao) == esperado
+        assert clamp_limite(valor, padrao) == esperado
+
+
+class TestCalcularMapa:
+    """`mapa_centro`/`mapa_zoom` existiam na API mas o frontend não os lia."""
+
+    def test_centro_e_a_media_de_todos_os_pontos(self):
+        from src.llm.serializacao import calcular_mapa
+
+        dados = [
+            {"latitude": 10.0, "longitude": 0.0},
+            {"latitude": 20.0, "longitude": 10.0},
+        ]
+        centro, zoom = calcular_mapa(dados)
+
+        assert centro == [15.0, 5.0]
+        assert zoom > 0
+
+    def test_nao_usa_o_primeiro_ponto(self):
+        """O primeiro ponto era o pior acesso — o mapa saía num canto."""
+        from src.llm.serializacao import calcular_mapa
+
+        dados = [
+            {"latitude": 0.0, "longitude": 0.0},
+            {"latitude": 10.0, "longitude": 0.0},
+            {"latitude": 20.0, "longitude": 0.0},
+        ]
+        centro, _ = calcular_mapa(dados)
+
+        assert centro == [10.0, 0.0]
+
+    def test_le_setores_de_dicionario(self):
+        from src.llm.serializacao import calcular_mapa
+
+        centro, _ = calcular_mapa({"setores": [{"lat": 4.0, "lon": 8.0}]})
+
+        assert centro == [4.0, 8.0]
+
+    def test_sem_pontos(self):
+        from src.llm.serializacao import calcular_mapa
+
+        assert calcular_mapa([]) == (None, 10)
+        assert calcular_mapa([{"nm_mun": "Adamantina"}]) == (None, 10)
+        assert calcular_mapa(None) == (None, 10)
+
+    def test_coordenada_invalida_e_ignorada(self):
+        from src.llm.serializacao import calcular_mapa
+
+        centro, _ = calcular_mapa(
+            [
+                {"latitude": "x", "longitude": "y"},
+                {"latitude": 2.0, "longitude": 3.0},
+            ]
+        )
+
+        assert centro == [2.0, 3.0]
+
+    def test_zoom_cobre_a_extensao(self):
+        from src.llm.serializacao import zoom_para
+
+        # Município inteiro (~1,2°) não pode ficar em zoom 11 (fixo, antigo).
+        assert zoom_para(1.2) == 9
+        # Ponto único / extensão nula.
+        assert zoom_para(0) == 12
+        # Fora da faixa útil do slippy map.
+        assert zoom_para(100) == 4
+        assert zoom_para(0.001) == 15
+
+
+class TestCaminhoCompletoSemBanco:
+    """Roteamento -> LLM -> ferramenta -> serialização, sem PostGIS no ar.
+
+    `db=None` de propósito: se algum ponto da coreografia tocar o banco, quebra
+    aqui. Os testes de integração (`db_session`) seguem cobrindo o SQL real;
+    estes cobram o caminho do `/query` para `make test` rodar sem Docker.
+    """
+
+    @pytest.fixture
+    def espacial_mocado(self, monkeypatch):
+        from types import SimpleNamespace
+
+        import src.llm.ferramentas as ferramentas
+        from src.services.spatial import Resolucao
+
+        monkeypatch.setattr(
+            ferramentas,
+            "resolver_municipio",
+            lambda db, nome: Resolucao(nome="Adamantina", codigo="3500105"),
+        )
+        monkeypatch.setattr(
+            ferramentas,
+            "ranking_municipios_db",
+            lambda db, **kw: [
+                SimpleNamespace(
+                    cod_mun_ibge="3500105",
+                    nm_mun="Adamantina",
+                    medicos_por_1k=1.2,
+                    total_medicos=330,
+                    total_cnes=20,
+                    populacao=34687.0,
+                    categoria_densidade="5. Ex",
+                )
+            ],
+        )
+        monkeypatch.setattr(
+            ferramentas,
+            "buscar_setores_proximos_db",
+            lambda db, **kw: [
+                SimpleNamespace(
+                    cd_setor="350010505000127",
+                    nm_mun="Adamantina",
+                    nm_dist=None,
+                    acessibilidade_e2sfca=0.0017,
+                    categoria_acesso="4. Limitado (acesso baixo)",
+                    dist_minima_metros=3339.0,
+                    total_medicos_dentro=0,
+                    v0001=120,
+                    latitude=-21.6,
+                    longitude=-51.0,
+                )
+            ],
+        )
+
+    @pytest.mark.asyncio
+    async def test_ranking_completa_o_caminho(self, espacial_mocado):
+        import json
+
+        from src.llm.orchestrator import processar_pergunta
+
+        llm = FakeLLMClient(
+            tool_call={"name": "ranking_municipios", "arguments": {"limite": 5}},
+            content="Adamantina tem o menor valor.",
+        )
+        result = await processar_pergunta(
+            "Ranking de municípios com menos médicos", db=None, llm=llm
+        )
+
+        assert result.tool_chamada == "ranking_municipios"
+        assert result.dados[0]["nm_mun"] == "Adamantina"
+        assert result.resposta == "Adamantina tem o menor valor."
+        assert result.resposta_de_fallback is False
+        # Ranking não tem coordenadas: não há o que enquadrar no mapa.
+        assert result.mapa_centro is None
+
+        ferramenta = [m for m in llm.get_last_call()["messages"] if m["role"] == "tool"][0]
+        assert json.loads(ferramenta["content"])["total_itens"] == 1
+
+    @pytest.mark.asyncio
+    async def test_setores_alimentam_o_mapa_e_vao_sem_lat_lon_ao_prompt(self, espacial_mocado):
+        from src.llm.orchestrator import processar_pergunta
+
+        llm = FakeLLMClient(
+            tool_call={
+                "name": "buscar_setores_proximos",
+                "arguments": {"municipio": "Adamantina", "raio_km": 5},
+            },
+            content="Setores próximos.",
+        )
+        result = await processar_pergunta(
+            "Quais setores ficam a 5 km do centro de Adamantina?",
+            db=None,
+            llm=llm,
+        )
+
+        assert result.mapa_centro == [-21.6, -51.0]
+        # Ponto único: extensão 0 -> zoom padrão do slippy map.
+        assert result.mapa_zoom == 12
+
+        ferramenta = [m for m in llm.get_last_call()["messages"] if m["role"] == "tool"][0]
+        assert "latitude" not in ferramenta["content"]
+        assert "350010505000127" in ferramenta["content"]
+
+    @pytest.mark.asyncio
+    async def test_erro_de_ferramenta_vira_texto_e_nao_dados(self):
+        from src.llm.orchestrator import processar_pergunta
+
+        # Sem `municipio` a ferramenta devolve `{"erro": ...}` sem tocar o banco.
+        llm = FakeLLMClient(
+            tool_call={"name": "buscar_setores_proximos", "arguments": {}},
+            content="Faltou o município.",
+        )
+        result = await processar_pergunta("Setores próximos aqui perto", db=None, llm=llm)
+
+        assert result.dados is None
+        assert result.resposta == "Faltou o município."
+
+    @pytest.mark.asyncio
+    async def test_erro_de_ferramenta_com_resposta_em_branco_e_explicado(self):
+        from src.llm.orchestrator import processar_pergunta
+
+        llm = FakeLLMClient(
+            tool_call={"name": "buscar_setores_proximos", "arguments": {}},
+            content="   ",
+        )
+        result = await processar_pergunta("Setores próximos aqui perto", db=None, llm=llm)
+
+        assert result.resposta_de_fallback is True
+        assert "Parâmetro 'municipio' é obrigatório" in result.resposta
+
+    @pytest.mark.asyncio
+    async def test_fora_de_escopo_nem_chama_o_llm(self):
+        from src.llm.orchestrator import processar_pergunta
+
+        class LLMQueNaoDeveriaSerChamado:
+            def chat(self, messages, tools=None):
+                raise AssertionError("fora do escopo não deveria chegar no LLM")
+
+        result = await processar_pergunta(
+            "me conte uma piada sobre gatos",
+            db=None,
+            llm=LLMQueNaoDeveriaSerChamado(),
+        )
+
+        assert "fora do escopo" in result.resposta
+        assert result.dados is None
+        assert result.tool_chamada is None

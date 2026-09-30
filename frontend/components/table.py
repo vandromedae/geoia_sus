@@ -1,5 +1,5 @@
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
 
 def render_table(dados: list[dict] | dict):
@@ -14,4 +14,6 @@ def render_table(dados: list[dict] | dict):
     df = pd.DataFrame(dados)
     if total:
         st.caption(f"Total de setores: {total}")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    # `use_container_width` está depreciado desde o Streamlit 1.49 e some
+    # depois de 2025-12-31; `width="stretch"` é o equivalente (e o default).
+    st.dataframe(df, width="stretch", hide_index=True)

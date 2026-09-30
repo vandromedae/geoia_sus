@@ -4,6 +4,7 @@ Revision ID: 9f2c1a3b7e01
 Revises: 7b5c441002eb
 Create Date: 2026-08-02 02:40:00.000000
 """
+
 from collections.abc import Sequence
 
 from geoalchemy2 import Geometry

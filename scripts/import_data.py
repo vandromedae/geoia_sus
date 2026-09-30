@@ -4,7 +4,13 @@ import typer
 
 from src.config import PARQUET_CNES, PARQUET_MUNICIPIOS, PARQUET_SETORES
 from src.database import SessionLocal
-from src.services.data import importar_cnes, importar_municipios, importar_setores
+from src.services.data import (
+    atualizar_centroides,
+    atualizar_codigos_ibge,
+    importar_cnes,
+    importar_municipios,
+    importar_setores,
+)
 
 app = typer.Typer(help="Importa dados dos parquets para o PostGIS.")
 
@@ -18,6 +24,7 @@ def importar(
 ):
     if force:
         from scripts.download_data import download_todos
+
         download_todos(force=True)
 
     session = SessionLocal()
@@ -45,6 +52,19 @@ def importar(
                 print(f"  CNES: {n} registros importados")
             else:
                 print(f"  Arquivo não encontrado: {path}")
+
+        if tipo in ("municipios", "setores", "todos"):
+            # O parquet de municípios traz `cod_mun_ibge` com 6 dígitos; o 7º
+            # (check digit do IBGE) só existe nos setores (`CD_MUN`). Sem isso
+            # um banco recém-criado fica com `350010` e nada junta com base
+            # externa — e `atualizar_centroides` logo abaixo não casa as tabelas.
+            n_setores, n_municipios = atualizar_codigos_ibge(session)
+            print(f"  Códigos IBGE: {n_setores} setores, {n_municipios} municípios corrigidos")
+            # Centroide é calculado a partir dos setores — precisa rodar depois
+            # do import, senão `buscar_setores_proximos` cai no subSELECT que
+            # faz ST_Centroid(ST_Collect(...)) a cada chamada.
+            n = atualizar_centroides(session)
+            print(f"  Centroides: {n} municípios atualizados")
     finally:
         session.close()
 
@@ -52,6 +72,7 @@ def importar(
 @app.command()
 def download(force: bool = typer.Option(False, "--force", "-f")):
     from scripts.download_data import download_todos
+
     download_todos(force=force)
 
 
